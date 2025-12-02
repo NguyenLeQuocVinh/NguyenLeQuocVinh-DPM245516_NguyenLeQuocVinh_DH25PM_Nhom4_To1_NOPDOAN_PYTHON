@@ -1,6 +1,6 @@
 import pyodbc
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import ttk, messagebox
 from tkcalendar import DateEntry
 
 # -----------------------------
@@ -10,14 +10,33 @@ def get_connection():
     try:
         conn = pyodbc.connect(
             "Driver={SQL Server};"
-            "Server=DESKTOP-RB7R9UH\\SQLEXPRESS;"
-            "Database=QLDIEMSV;"
+            "Server=DESKTOP-RB7H2AG\\SQLEXPRESS;"
+            "Database=SinhVienDB;"
             "Trusted_Connection=yes;"
         )
         return conn
     except Exception as e:
-        messagebox.showerror("Lỗi", f"Không kết nối được SQL Server:\n{e}")
+        messagebox.showerror("Lỗi kết nối SQL", str(e))
         return None
+
+# -----------------------------
+# LOAD DỮ LIỆU
+# -----------------------------
+def show_sinhvien():
+    conn = get_connection()
+    if conn is None:
+        return
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM SinhVien")
+    rows = cursor.fetchall()
+
+    for item in tree.get_children():
+        tree.delete(item)
+
+    for row in rows:
+        tree.insert("", tk.END, values=row)
+
+    conn.close()
 
 # -----------------------------
 # THÊM SINH VIÊN
@@ -27,10 +46,10 @@ def add_sv():
     hoten = entry_hoten.get().strip()
     lop = entry_lop.get().strip()
     phai = entry_phai.get().strip()
-    ngaysinh = entry_ngaysinh.get_date()  # datetime object
+    ngaysinh = entry_ngaysinh.get_date().strftime("%Y-%m-%d")  # FIX
 
-    if not masv or not hoten or not lop or not phai or not ngaysinh:
-        messagebox.showwarning("Chưa nhập", "Điền đủ thông tin")
+    if not masv or not hoten or not lop or not phai:
+        messagebox.showwarning("Thiếu thông tin", "Vui lòng nhập đầy đủ.")
         return
 
     conn = get_connection()
@@ -40,7 +59,7 @@ def add_sv():
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM SinhVien WHERE MaSV=?", (masv,))
     if cursor.fetchone()[0] > 0:
-        messagebox.showwarning("Lỗi", "Mã sinh viên đã tồn tại!")
+        messagebox.showerror("Lỗi", "Mã sinh viên đã tồn tại!")
         conn.close()
         return
 
@@ -50,7 +69,7 @@ def add_sv():
             (masv, hoten, lop, phai, ngaysinh)
         )
         conn.commit()
-        messagebox.showinfo("Thành công", f"Đã thêm sinh viên {hoten}!")
+        messagebox.showinfo("Thành công", f"Đã thêm sinh viên {hoten}")
         show_sinhvien()
 
         entry_masv.delete(0, tk.END)
@@ -60,245 +79,126 @@ def add_sv():
         entry_ngaysinh.set_date("2000-01-01")
 
     except Exception as e:
-        messagebox.showerror("Lỗi thêm SV", str(e))
-    finally:
-        conn.close()
+        messagebox.showerror("Lỗi thêm", str(e))
 
-# -----------------------------
-# SỬA SINH VIÊN
-# -----------------------------
-def edit_sv():
-    selected = tree_sv.focus()
-    if not selected:
-        messagebox.showwarning("Chưa chọn", "Chọn sinh viên cần sửa")
-        return
-
-    masv = tree_sv.item(selected)['values'][0]
-
-    new_hoten = simpledialog.askstring("Sửa Họ Tên", "Nhập Họ Tên mới:")
-    new_lop = simpledialog.askstring("Sửa Lớp", "Nhập Lớp mới:")
-    new_phai = simpledialog.askstring("Sửa Phái", "Nhập Phái (Nam/Nữ):")
-    new_ngaysinh = simpledialog.askstring("Sửa Ngày Sinh", "YYYY-MM-DD:")
-
-    if not new_hoten or not new_lop or not new_phai or not new_ngaysinh:
-        return
-
-    conn = get_connection()
-    if conn is None:
-        return
-    cursor = conn.cursor()
-
-    try:
-        cursor.execute(
-            "UPDATE SinhVien SET HoTen=?, Lop=?, Phai=?, NgaySinh=? WHERE MaSV=?",
-            (new_hoten, new_lop, new_phai, new_ngaysinh, masv)
-        )
-        conn.commit()
-        show_sinhvien()
-        messagebox.showinfo("Thành công", "Đã sửa sinh viên!")
-    except Exception as e:
-        messagebox.showerror("Lỗi", str(e))
-    finally:
-        conn.close()
+    conn.close()
 
 # -----------------------------
 # XÓA SINH VIÊN
 # -----------------------------
 def delete_sv():
-    selected = tree_sv.focus()
+    selected = tree.selection()
     if not selected:
-        messagebox.showwarning("Chưa chọn", "Chọn sinh viên cần xóa")
+        messagebox.showwarning("Chưa chọn", "Chọn sinh viên để xóa.")
         return
 
-    masv = tree_sv.item(selected)['values'][0]
+    masv = tree.item(selected[0])['values'][0]
 
     conn = get_connection()
-    if conn is None:
-        return
     cursor = conn.cursor()
-
     try:
-        cursor.execute("DELETE FROM Diem WHERE MaSV=?", (masv,))
         cursor.execute("DELETE FROM SinhVien WHERE MaSV=?", (masv,))
         conn.commit()
+        messagebox.showinfo("Đã xóa", "Xóa sinh viên thành công")
         show_sinhvien()
-        show_diem()
-        messagebox.showinfo("Thành công", "Đã xóa sinh viên!")
     except Exception as e:
-        messagebox.showerror("Lỗi", str(e))
-    finally:
-        conn.close()
+        messagebox.showerror("Lỗi xóa", str(e))
+
+    conn.close()
 
 # -----------------------------
-# NHẬP ĐIỂM
+# SỬA SINH VIÊN
 # -----------------------------
-def add_diem():
+def update_sv():
+    selected = tree.selection()
+    if not selected:
+        messagebox.showwarning("Chưa chọn", "Chọn dòng để sửa.")
+        return
+
     masv = entry_masv.get().strip()
-    mon = entry_mon.get().strip()
-    diem = entry_diem.get().strip()
-
-    if not masv or not mon or not diem:
-        messagebox.showwarning("Chưa nhập", "Điền đủ thông tin")
-        return
-
-    try:
-        diem = float(diem)
-        if diem < 0 or diem > 10:
-            raise ValueError
-    except:
-        messagebox.showerror("Lỗi", "Điểm phải từ 0-10")
-        return
+    hoten = entry_hoten.get().strip()
+    lop = entry_lop.get().strip()
+    phai = entry_phai.get().strip()
+    ngaysinh = entry_ngaysinh.get_date().strftime("%Y-%m-%d")
 
     conn = get_connection()
     cursor = conn.cursor()
-
-    cursor.execute("SELECT COUNT(*) FROM SinhVien WHERE MaSV=?", (masv,))
-    if cursor.fetchone()[0] == 0:
-        messagebox.showerror("Lỗi", "Mã sinh viên không tồn tại!")
-        conn.close()
-        return
-
     try:
-        cursor.execute("INSERT INTO Diem (MaSV, MonHoc, Diem) VALUES (?, ?, ?)",
-                       (masv, mon, diem))
+        cursor.execute(
+            "UPDATE SinhVien SET HoTen=?, Lop=?, Phai=?, NgaySinh=? WHERE MaSV=?",
+            (hoten, lop, phai, ngaysinh, masv)
+        )
         conn.commit()
-        show_diem()
-        messagebox.showinfo("Thành công", "Đã thêm điểm!")
+        messagebox.showinfo("Đã sửa", "Cập nhật sinh viên thành công")
+        show_sinhvien()
     except Exception as e:
-        messagebox.showerror("Lỗi thêm điểm", str(e))
-    finally:
-        conn.close()
-
-# -----------------------------
-# HIỂN THỊ SINH VIÊN
-# -----------------------------
-def show_sinhvien():
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT MaSV, HoTen, Lop, Phai, NgaySinh FROM SinhVien")
-    rows = cursor.fetchall()
-
-    for i in tree_sv.get_children():
-        tree_sv.delete(i)
-    for r in rows:
-        tree_sv.insert("", "end", values=r)
+        messagebox.showerror("Lỗi sửa", str(e))
 
     conn.close()
 
 # -----------------------------
-# HIỂN THỊ ĐIỂM
+# HIỂN THỊ LÊN Ô NHẬP KHI CHỌN
 # -----------------------------
-def show_diem():
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT SinhVien.MaSV, HoTen, Lop, MonHoc, Diem
-        FROM SinhVien
-        LEFT JOIN Diem ON SinhVien.MaSV = Diem.MaSV
-    """)
-    rows = cursor.fetchall()
+def on_row_select(event):
+    selected = tree.selection()
+    if not selected:
+        return
 
-    for i in tree_diem.get_children():
-        tree_diem.delete(i)
-    for r in rows:
-        tree_diem.insert("", "end", values=r)
+    values = tree.item(selected[0])['values']
 
-    conn.close()
+    entry_masv.delete(0, tk.END)
+    entry_hoten.delete(0, tk.END)
+    entry_lop.delete(0, tk.END)
 
-# -----------------------------
-# TÌM KIẾM SINH VIÊN
-# -----------------------------
-def search_sv():
-    keyword = entry_search.get().strip()
+    entry_masv.insert(0, values[0])
+    entry_hoten.insert(0, values[1])
+    entry_lop.insert(0, values[2])
+    entry_phai.set(values[3])
+    entry_ngaysinh.set_date(values[4])
 
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT MaSV, HoTen, Lop, Phai, NgaySinh
-        FROM SinhVien
-        WHERE MaSV LIKE ? OR HoTen LIKE ?
-    """, (f"%{keyword}%", f"%{keyword}%"))
-    rows = cursor.fetchall()
-
-    for i in tree_sv.get_children():
-        tree_sv.delete(i)
-    for r in rows:
-        tree_sv.insert("", "end", values=r)
-
-    conn.close()
-
-# -----------------------------
+# --------------------------------------------------------------------
 # GIAO DIỆN TKINTER
-# -----------------------------
+# --------------------------------------------------------------------
 root = tk.Tk()
-root.title("Quản Lý Điểm Sinh Viên")
-root.geometry("1000x600")
+root.title("Quản lý Sinh Viên")
+root.geometry("820x550")
 
-# Form nhập
-frame = tk.Frame(root)
-frame.pack(pady=10)
+# --- FORM ---
+tk.Label(root, text="Mã SV").place(x=20, y=20)
+entry_masv = tk.Entry(root)
+entry_masv.place(x=120, y=20)
 
-tk.Label(frame, text="Mã SV").grid(row=0, column=0)
-entry_masv = tk.Entry(frame)
-entry_masv.grid(row=0, column=1)
+tk.Label(root, text="Họ tên").place(x=20, y=60)
+entry_hoten = tk.Entry(root)
+entry_hoten.place(x=120, y=60)
 
-tk.Label(frame, text="Họ Tên").grid(row=1, column=0)
-entry_hoten = tk.Entry(frame)
-entry_hoten.grid(row=1, column=1)
+tk.Label(root, text="Lớp").place(x=20, y=100)
+entry_lop = tk.Entry(root)
+entry_lop.place(x=120, y=100)
 
-tk.Label(frame, text="Lớp").grid(row=2, column=0)
-entry_lop = tk.Entry(frame)
-entry_lop.grid(row=2, column=1)
+tk.Label(root, text="Phái").place(x=20, y=140)
+entry_phai = ttk.Combobox(root, values=["Nam", "Nữ"])
+entry_phai.place(x=120, y=140)
 
-tk.Label(frame, text="Phái").grid(row=3, column=0)
-entry_phai = ttk.Combobox(frame, values=["Nam", "Nữ"])
-entry_phai.grid(row=3, column=1)
+tk.Label(root, text="Ngày sinh").place(x=20, y=180)
+entry_ngaysinh = DateEntry(root, date_pattern="yyyy-mm-dd")
+entry_ngaysinh.place(x=120, y=180)
 
-tk.Label(frame, text="Ngày Sinh").grid(row=3, column=2)
-entry_ngaysinh = DateEntry(frame, date_pattern='yyyy-mm-dd')
-entry_ngaysinh.grid(row=3, column=3)
+# --- BUTTON ---
+tk.Button(root, text="Thêm", width=10, command=add_sv).place(x=350, y=20)
+tk.Button(root, text="Sửa", width=10, command=update_sv).place(x=350, y=60)
+tk.Button(root, text="Xóa", width=10, command=delete_sv).place(x=350, y=100)
+tk.Button(root, text="Làm mới", width=10, command=show_sinhvien).place(x=350, y=140)
 
-tk.Label(frame, text="Môn").grid(row=0, column=2)
-entry_mon = tk.Entry(frame)
-entry_mon.grid(row=0, column=3)
+# --- TABLE ---
+columns = ("MaSV", "HoTen", "Lop", "Phai", "NgaySinh")
+tree = ttk.Treeview(root, columns=columns, show="headings", height=12)
+for col in columns:
+    tree.heading(col, text=col)
+    tree.column(col, width=120)
 
-tk.Label(frame, text="Điểm").grid(row=1, column=2)
-entry_diem = tk.Entry(frame)
-entry_diem.grid(row=1, column=3)
+tree.place(x=20, y=240, width=760, height=280)
+tree.bind("<<TreeviewSelect>>", on_row_select)
 
-tk.Label(frame, text="Tìm kiếm").grid(row=2, column=2)
-entry_search = tk.Entry(frame)
-entry_search.grid(row=2, column=3)
-
-# Buttons
-button_frame = tk.Frame(root)
-button_frame.pack(pady=5)
-
-tk.Button(button_frame, text="Thêm SV", command=add_sv).grid(row=0, column=0, padx=5)
-tk.Button(button_frame, text="Sửa SV", command=edit_sv).grid(row=0, column=1, padx=5)
-tk.Button(button_frame, text="Xóa SV", command=delete_sv).grid(row=0, column=2, padx=5)
-tk.Button(button_frame, text="Nhập Điểm", command=add_diem).grid(row=0, column=3, padx=5)
-tk.Button(button_frame, text="Tìm kiếm SV", command=search_sv).grid(row=0, column=4, padx=5)
-tk.Button(button_frame, text="Thoát", command=root.quit).grid(row=0, column=5, padx=5)
-
-# Bảng sinh viên
-tk.Label(root, text="Danh sách sinh viên").pack()
-columns_sv = ("MaSV", "HoTen", "Lop", "Phai", "NgaySinh")
-tree_sv = ttk.Treeview(root, columns=columns_sv, show="headings")
-for col in columns_sv:
-    tree_sv.heading(col, text=col)
-tree_sv.pack(fill="x", pady=5)
-
-# Bảng điểm
-tk.Label(root, text="Danh sách điểm").pack()
-columns_diem = ("MaSV", "HoTen", "Lop", "MonHoc", "Diem")
-tree_diem = ttk.Treeview(root, columns=columns_diem, show="headings")
-for col in columns_diem:
-    tree_diem.heading(col, text=col)
-tree_diem.pack(fill="both", expand=True, pady=5)
-
-# Load ban đầu
 show_sinhvien()
-show_diem()
-
 root.mainloop()
